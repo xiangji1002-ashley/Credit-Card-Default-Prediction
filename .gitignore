@@ -1,0 +1,25 @@
+# Data files (too big or proprietary)
+*.csv
+*.xls
+*.xlsx
+data/*.csv
+data/*.xls
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# Plots output
+plots/*.png
+plots/*.pdf
+
+# macOS system files
+.DS_Store
+
+# RStudio project files (optional, can keep these if you want)
+*.Rproj
+
+
+.RDataTmp
