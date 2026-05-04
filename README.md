@@ -5,6 +5,7 @@ A binary classification project predicting next-month credit card default for 30
 This repository contains both the **2019 original** (course project) and a **2026 modernized version** that I refactored as a learning exercise — demonstrating how the R ecosystem has evolved (tidyverse, recipes, rsample, ranger, xgboost).
 
 ## Project Structure
+```
 .
 ├── credit_card_default_modernized.R   # Combined modernized pipeline (start here)
 ├── sourcecode/                         # Same pipeline split into 10 numbered files
@@ -13,6 +14,7 @@ This repository contains both the **2019 original** (course project) and a **202
 │   ├── ...
 │   └── 09_model_comparison.R
 └── data/                               # Data not committed; see below
+```
 ## Dataset
 
 **Source**: [UCI ML Repository — Default of Credit Card Clients](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients)
