@@ -49,3 +49,13 @@ test_baked  <- bake(recipe_prepped, new_data = dataset_test)
 cat("\nTrain baked dim:", dim(train_baked), "\n")
 cat("Test baked dim: ", dim(test_baked),  "\n")
 glimpse(train_baked)
+# -----------------------------------------------------------------------------
+# 4.3 Save baked data to disk for downstream debugging / sharing
+# -----------------------------------------------------------------------------
+# Optional but useful: persist the processed datasets so colleagues (or a
+# future "you") can resume from here without re-running the full pipeline.
+# These are gitignored to avoid bloating the repo.
+
+write_csv(train_baked, "data/train_baked.csv")
+write_csv(test_baked,  "data/test_baked.csv")
+cat("\nBaked datasets saved to data/\n")

@@ -6,7 +6,34 @@
 #   2. Handles multicollinearity (e.g., bill_amt1..6) by selecting one and
 #      zeroing the rest
 #   3. cv.glmnet() handles cross-validation for lambda automatically
+# -----------------------------------------------------------------------------
+# 6.0 Plain Logistic Regression — baseline before regularization
+# -----------------------------------------------------------------------------
+# Run a vanilla glm() first as a sanity-check baseline. Comparing it to LASSO
+# tells us how much regularization helps with this multicollinear dataset
+# (recall: bill_amt1..6 have correlations of 0.85+).
 
+# Use same data as LASSO (already split + baked)
+glm_data_train <- train_baked
+glm_data_test  <- test_baked
+
+glm_fit <- glm(
+  default_payment_next_month ~ .,
+  family = binomial(),
+  data   = glm_data_train
+)
+
+# Predict probabilities on test set
+glm_pred_prob <- predict(glm_fit, newdata = glm_data_test, type = "response")
+
+cat("\n========== Plain GLM Logistic Regression (Baseline) ==========\n")
+result_glm <- evaluate_model(glm_pred_prob, y_test, model_name = "GLM Baseline")
+get_performance(result_glm$Confusion_Matrix)
+cat("\nGLM Baseline AUC:", round(result_glm$AUC, 4), "\n")
+
+# Number of "active" predictors (any with non-zero coefficient — for GLM that's all)
+cat("GLM uses all", length(coef(glm_fit)) - 1, "predictors\n")
+cat("LASSO will use only the non-zero subset (typically 15-19 of 26)\n")
 # -----------------------------------------------------------------------------
 # 6.1 Prepare matrix inputs (glmnet requires matrix, not data.frame)
 # -----------------------------------------------------------------------------

@@ -229,6 +229,104 @@ corrplot(cor_matrix,
          tl.col       = "black",
          number.cex   = 0.6,
          diag         = FALSE)
+
+# =============================================================================
+# Section 3.6: Chi-square tests of independence (categorical features vs default)
+# =============================================================================
+# Goal: quantitatively confirm whether the visual associations seen in the
+# faceted bar charts are statistically significant. Each test answers:
+#   "Is the joint distribution of (factor, default) different from what we'd
+#    expect if they were independent?"
+# Small p-value => reject independence => the factor carries signal.
+#
+# Note: chi-square tests assume sufficient cell counts (typically >= 5 per
+# cell). With 30K samples this is comfortably met.
+
+cat("\n========== Chi-square Tests: Categorical Features vs Default ==========\n\n")
+
+# Build cross-tabs (contingency tables) using base R's xtabs()
+sex_xtab       <- xtabs(~ sex       + default_payment_next_month, data = dataset)
+education_xtab <- xtabs(~ education + default_payment_next_month, data = dataset)
+marriage_xtab  <- xtabs(~ marriage  + default_payment_next_month, data = dataset)
+
+# Print the cross-tabs with marginal totals (gives full picture)
+cat("--- SEX × Default ---\n")
+print(addmargins(sex_xtab))
+
+cat("\n--- EDUCATION × Default ---\n")
+print(addmargins(education_xtab))
+
+cat("\n--- MARRIAGE × Default ---\n")
+print(addmargins(marriage_xtab))
+
+# Run chi-square tests
+cat("\n========== Test Results ==========\n")
+
+cat("\n--- SEX vs Default ---\n")
+print(chisq.test(sex_xtab))
+
+cat("\n--- EDUCATION vs Default ---\n")
+print(chisq.test(education_xtab))
+
+cat("\n--- MARRIAGE vs Default ---\n")
+print(chisq.test(marriage_xtab))
+
+# Tidy summary: extract p-values into one comparison table
+chisq_summary <- tibble(
+  feature = c("sex", "education", "marriage"),
+  p_value = c(
+    chisq.test(sex_xtab)$p.value,
+    chisq.test(education_xtab)$p.value,
+    chisq.test(marriage_xtab)$p.value
+  ),
+  test_statistic = c(
+    chisq.test(sex_xtab)$statistic,
+    chisq.test(education_xtab)$statistic,
+    chisq.test(marriage_xtab)$statistic
+  )
+) |>
+  mutate(
+    significant_at_001 = p_value < 0.001,
+    p_value = formatC(p_value, format = "e", digits = 2)   # scientific notation
+  ) |>
+  arrange(desc(test_statistic))
+
+cat("\n--- Summary ---\n")
+print(chisq_summary)
+# =============================================================================
+# Section 3.7: Credit limit distribution by demographic factors
+# =============================================================================
+# Three additional density plots — limit_bal sliced by sex / education / marriage
+# These reveal demographic patterns in credit allocation that may correlate
+# with default risk. Useful for "feature interaction" intuition before modeling.
+
+library(patchwork)
+
+# Helper: build limit_bal density plot grouped by any factor
+make_limit_density <- function(group_var, title) {
+  ggplot(dataset, aes(x = limit_bal, fill = .data[[group_var]])) +
+    geom_density(alpha = 0.5, color = NA) +
+    scale_x_continuous(labels = scales::comma) +
+    scale_fill_brewer(palette = "Set2") +
+    labs(title = title, x = "Credit Limit (NT$)", y = "Density", fill = NULL) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom",
+          plot.title = element_text(face = "bold", size = 11))
+}
+
+p_limit_sex       <- make_limit_density("sex",       "By Sex")
+p_limit_education <- make_limit_density("education", "By Education")
+p_limit_marriage  <- make_limit_density("marriage",  "By Marriage")
+
+# Combine into one figure with patchwork
+limit_combined <- (p_limit_sex / p_limit_education / p_limit_marriage) +
+  plot_annotation(
+    title    = "Credit Limit Distribution Across Demographic Factors",
+    subtitle = "Higher-education customers receive systematically higher limits",
+    theme    = theme(plot.title = element_text(face = "bold", size = 14))
+  )
+
+print(limit_combined)
 # =============================================================================
 # Section 4: Train/Test Split + Pre-processing Pipeline
 # =============================================================================
@@ -279,6 +377,16 @@ test_baked  <- bake(recipe_prepped, new_data = dataset_test)
 
 cat("\nTrain baked dim:", dim(train_baked), "\n")
 cat("Test baked dim: ", dim(test_baked),  "\n")
+# -----------------------------------------------------------------------------
+# 4.3 Save baked data to disk for downstream debugging / sharing
+# -----------------------------------------------------------------------------
+# Optional but useful: persist the processed datasets so colleagues (or a
+# future "you") can resume from here without re-running the full pipeline.
+# These are gitignored to avoid bloating the repo.
+
+write_csv(train_baked, "data/train_baked.csv")
+write_csv(test_baked,  "data/test_baked.csv")
+cat("\nBaked datasets saved to data/\n")
 glimpse(train_baked)# =============================================================================
 # Section 5: Helper Functions for Model Evaluation
 # =============================================================================
@@ -357,6 +465,34 @@ get_lasso_coefs <- function(fit, lambda) {
 #   2. Handles multicollinearity (e.g., bill_amt1..6) by selecting one and
 #      zeroing the rest
 #   3. cv.glmnet() handles cross-validation for lambda automatically
+# -----------------------------------------------------------------------------
+# 6.0 Plain Logistic Regression — baseline before regularization
+# -----------------------------------------------------------------------------
+# Run a vanilla glm() first as a sanity-check baseline. Comparing it to LASSO
+# tells us how much regularization helps with this multicollinear dataset
+# (recall: bill_amt1..6 have correlations of 0.85+).
+
+# Use same data as LASSO (already split + baked)
+glm_data_train <- train_baked
+glm_data_test  <- test_baked
+
+glm_fit <- glm(
+  default_payment_next_month ~ .,
+  family = binomial(),
+  data   = glm_data_train
+)
+
+# Predict probabilities on test set
+glm_pred_prob <- predict(glm_fit, newdata = glm_data_test, type = "response")
+
+cat("\n========== Plain GLM Logistic Regression (Baseline) ==========\n")
+result_glm <- evaluate_model(glm_pred_prob, y_test, model_name = "GLM Baseline")
+get_performance(result_glm$Confusion_Matrix)
+cat("\nGLM Baseline AUC:", round(result_glm$AUC, 4), "\n")
+
+# Number of "active" predictors (any with non-zero coefficient — for GLM that's all)
+cat("GLM uses all", length(coef(glm_fit)) - 1, "predictors\n")
+cat("LASSO will use only the non-zero subset (typically 15-19 of 26)\n")
 
 # -----------------------------------------------------------------------------
 # 6.1 Prepare matrix inputs (glmnet requires matrix, not data.frame)
